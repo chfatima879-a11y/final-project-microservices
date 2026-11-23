@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dealer Evaluation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f7fa;
+      color: #222;
+    }
+    .card {
+      background: #fff;
+      padding: 24px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    label {
+      display: block;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    .result-box {
+      margin-top: 24px;
+      padding: 16px;
+      background: #eef4ff;
+      border-radius: 8px;
+      border-left: 4px solid #1d4ed8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #d1d5db;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Dealer Evaluation Portal</h2>
+
+    <label for="productSelect">Select a Product:</label>
+    <select id="productSelect">
+      <option value="">-- Loading products... --</option>
+    </select>
+
+    <label for="dealerSelect">Select a Dealer:</label>
+    <select id="dealerSelect" disabled>
+      <option value="">-- Select a product first --</option>
+    </select>
+
+    <div id="resultBox" class="result-box">
+      Please select a product to view available dealers and prices.
+    </div>
+  </div>
+
+  <script>
+    // Replace these two URLs when you deploy backends to Code Engine
+    const PRODUCT_SERVICE_URL = "";
+    const PRICING_SERVICE_URL = "";
+
+    const FALLBACK_PRODUCTS = [
+      { id: 1, name: "Laptop", brand: "Dell" },
+      { id: 2, name: "Smartphone", brand: "Samsung" },
+      { id: 3, name: "Headphones", brand: "Sony" },
+      { id: 4, name: "Office Chair", brand: "IKEA" }
+    ];
+
+    const FALLBACK_PRICES = {
+      "Laptop": [
+        { dealer: "TechZone", price: 850 },
+        { dealer: "MegaMart", price: 880 },
+        { dealer: "PrimeHub", price: 830 }
+      ],
+      "Smartphone": [
+        { dealer: "TechZone", price: 650 },
+        { dealer: "CityElectronics", price: 640 },
+        { dealer: "PrimeHub", price: 670 }
+      ],
+      "Headphones": [
+        { dealer: "SoundWorld", price: 150 },
+        { dealer: "MegaMart", price: 160 },
+        { dealer: "CityElectronics", price: 145 }
+      ],
+      "Office Chair": [
+        { dealer: "HomeComfort", price: 220 },
+        { dealer: "MegaMart", price: 235 },
+        { dealer: "PrimeHub", price: 210 }
+      ]
+    };
+
+    const productSelect = document.getElementById("productSelect");
+    const dealerSelect = document.getElementById("dealerSelect");
+    const resultBox = document.getElementById("resultBox");
+
+    async function loadProducts() {
+      let products = FALLBACK_PRODUCTS;
+      if (PRODUCT_SERVICE_URL) {
+        try {
+          const res = await fetch(`${PRODUCT_SERVICE_URL}/products`);
+          const data = await res.json();
+          if (data.products && data.products.length) products = data.products;
+        } catch (e) {}
+      }
+
+      productSelect.innerHTML = '<option value="">-- Choose a product --</option>';
+      products.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.name;
+        opt.textContent = `${p.name} (${p.brand})`;
+        productSelect.appendChild(opt);
+      });
+    }
+
+    async function loadDealers(productName) {
+      dealerSelect.disabled = true;
+      dealerSelect.innerHTML = '<option value="">Loading dealers...</option>';
+
+      if (!productName) {
+        dealerSelect.innerHTML = '<option value="">-- Select a product first --</option>';
+        resultBox.innerHTML = "Please select a product to view available dealers and prices.";
+        return;
+      }
+
+      let entries = FALLBACK_PRICES[productName] || [];
+      if (PRICING_SERVICE_URL) {
+        try {
+          const res = await fetch(`${PRICING_SERVICE_URL}/dealers/${encodeURIComponent(productName)}`);
+          const data = await res.json();
+          if (data.prices && data.prices.length) entries = data.prices;
+        } catch (e) {}
+      }
+
+      const dealers = entries.map((x) => x.dealer);
+      dealerSelect.innerHTML = '<option value="">-- Choose a dealer --</option>';
+
+      const allOpt = document.createElement("option");
+      allOpt.value = "ALL";
+      allOpt.textContent = "All Dealers";
+      dealerSelect.appendChild(allOpt);
+
+      dealers.forEach((d) => {
+        const opt = document.createElement("option");
+        opt.value = d;
+        opt.textContent = d;
+        dealerSelect.appendChild(opt);
+      });
+
+      dealerSelect.disabled = false;
+      resultBox.innerHTML = `
+        <strong>Product:</strong> ${productName}<br/>
+        <strong>Available Dealers (${dealers.length}):</strong> ${dealers.join(", ") || "None"}
+      `;
+    }
+
+    async function loadPrices(productName, dealerValue) {
+      if (!productName || !dealerValue) return;
+
+      let entries = FALLBACK_PRICES[productName] || [];
+      if (PRICING_SERVICE_URL) {
+        try {
+          const url = `${PRICING_SERVICE_URL}/prices/${encodeURIComponent(productName)}?dealer=${encodeURIComponent(dealerValue)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.results && data.results.length) entries = data.results;
+        } catch (e) {}
+      }
+
+      const rows =
+        dealerValue === "ALL"
+          ? entries
+          : entries.filter((r) => r.dealer.toLowerCase() === dealerValue.toLowerCase());
+
+      const tableRows = rows
+        .map((r) => `<tr><td>${r.dealer}</td><td>$${r.price}</td></tr>`)
+        .join("");
+
+      resultBox.innerHTML = `
+        <strong>Product:</strong> ${productName}<br/>
+        <strong>Selection:</strong> ${dealerValue === "ALL" ? "All Dealers" : dealerValue}
+        <table>
+          <thead>
+            <tr><th>Dealer</th><th>Price</th></tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      `;
+    }
+
+    productSelect.addEventListener("change", (e) => loadDealers(e.target.value));
+    dealerSelect.addEventListener("change", (e) => loadPrices(productSelect.value, e.target.value));
+
+    loadProducts();
+  </script>
+</body>
+</html>
